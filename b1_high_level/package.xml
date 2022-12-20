@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>b1_high_level</name>
+  <version>0.0.0</version>
+  <description>The b1_high_level package</description>
+
+  <maintainer email="skywoodszcn@gmail.com">skywoodsz</maintainer>
+
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <build_depend>roscpp</build_depend>
+  <build_export_depend>roscpp</build_export_depend>
+  <exec_depend>roscpp</exec_depend>
+  <depend>realtime_tools</depend>
+  <depend>tf2_ros</depend>
+  <depend>sensor_msgs</depend>
+  <depend>cheetah_msgs</depend>
+
+  <export>
+
+  </export>
+</package>

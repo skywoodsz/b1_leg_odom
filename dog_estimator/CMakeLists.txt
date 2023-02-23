@@ -12,6 +12,7 @@ find_package(catkin REQUIRED
         roscpp
         realtime_tools
         cheetah_msgs
+        geometry_msgs
         tf2_ros
         )
 

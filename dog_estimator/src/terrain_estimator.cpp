@@ -19,6 +19,12 @@ nh_(nh)
 
     imu_marker_pub_ = nh_.advertise<visualization_msgs::Marker>("/dog/terrain_imu_norm_vis_debug", 1);
 
+    terrain_eular_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/dog/terrain_eular", 1);
+
+    terrain_deatal_z_pub_ = nh.advertise<geometry_msgs::Vector3Stamped>("/dog/terrain_deatal_z", 1);
+
+    theta_threshold_ = 5. * M_PI / 180.;
+
     Reset();
 }
 
@@ -36,6 +42,47 @@ void TerrainEstimator::Reset() {
     id_ = 0;
     marker_array_.markers.clear();
 
+}
+
+void TerrainEstimator::terrainDealtaZ(const RobotState &state)
+{
+
+    Eigen::Vector3d gravity_unity(0, 0, 1);
+    Eigen::Vector3d terrain_norm_unity = terrain_norm_ / terrain_norm_.norm();
+    double theta = acos(terrain_norm_unity.transpose() * gravity_unity);
+    double dealta_z = 0.;
+
+    if(theta > theta_threshold_)
+    {
+        Eigen::Vector3d terrain_pos = state.pos_;
+        Eigen::Matrix3d Rbod = quaternionToRotationMatrix(state.quat_);
+        Eigen::Vector3d delta_pos = Rbod.transpose() * (terrain_pos - terrain_init_pos_);
+        dealta_z = delta_pos(0) * tan(theta);
+
+        if(terrain_norm_unity(0) > 0)
+            dealta_z = -dealta_z;
+
+    }
+    else
+    {
+        terrain_init_pos_ = state.pos_;
+        terrain_init_quat_ = state.quat_;
+    }
+
+
+    geometry_msgs::Vector3Stamped theta_msg, dealta_z_msg;
+    ros::Time time = ros::Time::now();
+    theta_msg.header.stamp = time;
+    dealta_z_msg.header.stamp = time;
+    theta_msg.vector.z = theta * 180. / M_PI;
+    dealta_z_msg.vector.z = dealta_z;
+
+    // std_msgs::Float32 theta_msg, dealta_z_msg;
+    // theta_msg.data = theta * 180. / M_PI;
+    // dealta_z_msg.data = dealta_z;
+
+    terrain_eular_pub_.publish(theta_msg);
+    terrain_deatal_z_pub_.publish(dealta_z_msg);
 }
 
 void TerrainEstimator::update(const RobotState &state) {
@@ -73,6 +120,9 @@ void TerrainEstimator::update(const RobotState &state) {
             Eigen::Quaterniond quat = state.quat_;
             Eigen::Vector3d defalut_norm = Eigen::Vector3d(0, 0, 1);
             terrain_imu_norm_ = quat * defalut_norm;
+
+            // 3. dealta z
+            terrainDealtaZ(state);
 
             publish();
             visPublish(state);

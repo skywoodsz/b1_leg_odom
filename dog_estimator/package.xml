@@ -4,7 +4,7 @@
   <version>0.0.0</version>
   <description>The dog_estimator package</description>
 
-  <maintainer email="skywoodsz@gmail.gmail">skywoodsz</maintainer>
+  <maintainer email="skywoodszcn@gmail.gmail">skywoodsz</maintainer>
 
   <license>MIT</license>
 
@@ -13,6 +13,7 @@
   <depend>realtime_tools</depend>>
   <depend>cheetah_msgs</depend>>
   <depend>tf2_ros</depend>>
+  <depend>geometry_msgs</depend>>
 
   <export>
 

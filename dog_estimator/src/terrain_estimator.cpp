@@ -23,7 +23,7 @@ nh_(nh)
 
     terrain_deatal_z_pub_ = nh.advertise<geometry_msgs::Vector3Stamped>("/dog/terrain_deatal_z", 1);
 
-    theta_threshold_ = 5. * M_PI / 180.;
+    theta_threshold_ = 3. * M_PI / 180.;
 
     Reset();
 }

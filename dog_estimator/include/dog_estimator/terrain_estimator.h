@@ -34,7 +34,7 @@ private:
     void terrainDealtaZ(const RobotState &state);
 
     ros::NodeHandle nh_;
-    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Vector3>> norm_pub_;
+    std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Vector3Stamped>> norm_pub_;
     std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Vector3>> norm_imu_pub_;
     ros::Publisher marker_pub_, imu_marker_pub_;
     ros::Publisher marker_real_time_pub_;

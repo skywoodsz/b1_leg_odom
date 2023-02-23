@@ -8,7 +8,7 @@ TerrainEstimator::TerrainEstimator(ros::NodeHandle &nh) :
 nh_(nh)
 {
     norm_pub_ =
-            std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::Vector3>>(nh_, "/dog/terrain_norm", 100);
+            std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::Vector3Stamped>>(nh_, "/dog/terrain_norm", 100);
 
     norm_imu_pub_ =
             std::make_shared<realtime_tools::RealtimePublisher<geometry_msgs::Vector3>>(nh_, "/dog/terrain_imu_norm", 100);
@@ -142,9 +142,10 @@ void TerrainEstimator::update(const RobotState &state) {
 void TerrainEstimator::publish() {
     if(norm_pub_->trylock())
     {
-        norm_pub_->msg_.x = terrain_norm_[0];
-        norm_pub_->msg_.y = terrain_norm_[1];
-        norm_pub_->msg_.z = terrain_norm_[2];
+        norm_pub_->msg_.header.stamp = ros::Time::now();
+        norm_pub_->msg_.vector.x = terrain_norm_[0];
+        norm_pub_->msg_.vector.y = terrain_norm_[1];
+        norm_pub_->msg_.vector.z = terrain_norm_[2];
         norm_pub_->unlockAndPublish();
     }
 

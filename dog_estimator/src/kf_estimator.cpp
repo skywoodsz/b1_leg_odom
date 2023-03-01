@@ -40,12 +40,14 @@ void KF_ESTIMATOR::update(const ros::TimerEvent &event) {
     if(imu_flag_ & leg_flag_ & contact_flag_)
     {
         if (linear_estimate_ != nullptr)
-            linear_estimate_->update(robot_state_, time_);
+            linear_estimate_->update(robot_state_, time_, terrain_z_);
 
         Body2WorldKine();
 
         if(terrain_estimator_ != nullptr)
-            terrain_estimator_->update(robot_state_);
+            terrain_estimator_->update(robot_state_, terrain_z_);
+
+        // std::cout<<"terrain_z_: "<<terrain_z_<<std::endl;
 
         // publishState();
 
@@ -78,6 +80,8 @@ void KF_ESTIMATOR::Reset() {
         robot_state_.bfoot_pos_[j].setZero();
         robot_state_.bfoot_vel_[j].setZero();
     }
+
+    terrain_z_ = 0.0;
 }
 
 /**

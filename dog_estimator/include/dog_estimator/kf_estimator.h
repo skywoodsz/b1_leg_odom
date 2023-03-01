@@ -52,6 +52,7 @@ private:
     realtime_tools::RealtimeBuffer<sensor_msgs::Imu> imu_buffer_;
 
     double initial_yaw_;
+    double terrain_z_;
 
     std::shared_ptr<realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>> state_pub_;
 

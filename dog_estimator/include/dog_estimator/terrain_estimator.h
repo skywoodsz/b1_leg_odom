@@ -7,6 +7,7 @@
 
 #include <ros/ros.h>
 #include <std_msgs/Float32.h>
+#include <std_msgs/Bool.h>
 #include <geometry_msgs/Vector3.h>
 #include <nav_msgs/Odometry.h>
 #include <visualization_msgs/Marker.h>
@@ -23,7 +24,7 @@ class TerrainEstimator
 {
 public:
     TerrainEstimator(ros::NodeHandle& nh);
-    void update(const RobotState& state);
+    void update(const RobotState& state, double& terrain_z);
     void Reset();
 
 private:
@@ -31,7 +32,7 @@ private:
     void visPublish(const RobotState& state);
     void visImuPublish(const RobotState& state);
     void visArrayPublish(const RobotState& state, int id);
-    void terrainDealtaZ(const RobotState &state);
+    void terrainDealtaZ(const RobotState &state, const ros::Duration &period, double& terrain_z);
 
     ros::NodeHandle nh_;
     std::shared_ptr<realtime_tools::RealtimePublisher<geometry_msgs::Vector3Stamped>> norm_pub_;
@@ -40,8 +41,8 @@ private:
     ros::Publisher marker_real_time_pub_;
     ros::Publisher terrain_eular_pub_;
     ros::Publisher terrain_deatal_z_pub_;
-
-
+    ros::Publisher terrain_sum_z_pub_;
+    ros::Publisher terrain_flag_pub_;
 
     Eigen::Vector3d p_foot_[4];
     Eigen::Vector3d A_pla_;
@@ -58,6 +59,8 @@ private:
     double theta_threshold_;
     Eigen::Vector3d terrain_init_pos_;
     Eigen::Quaterniond terrain_init_quat_;
+
+    double dealta_z_sum_;
 };
 
 

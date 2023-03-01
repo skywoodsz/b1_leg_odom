@@ -10,7 +10,7 @@ StateEstimateBase::StateEstimateBase(ros::NodeHandle& nh)
     path_pub_ = std::make_shared<realtime_tools::RealtimePublisher<nav_msgs::Path>>(nh, "/dog/legged_path", 100);
 }
 
-void StateEstimateBase::update(RobotState& state, ros::Time timeStamp)
+void StateEstimateBase::update(RobotState& state, ros::Time timeStamp, const double terrain_z)
 {
     ros::Time time = timeStamp;
     // ofstream savelegodompose_path("/home/skywoodsz/code/slam/LegSAM_ws/src/Logodompose.txt",ios::app);
@@ -130,7 +130,7 @@ LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEst
     r_.setIdentity();
 }
 
-void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp)
+void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, const double terrain_z)
 {
     // predict
     double imu_process_noise_position = 0.02;
@@ -172,11 +172,6 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp)
                 (state.contact_state_[i] ? 1. : high_suspect_number) * r.block(r_index2, r_index2, 3, 3);
         r(r_index3, r_index3) = (state.contact_state_[i] ? 1. : high_suspect_number) * r(r_index3, r_index3);
 
-//        Vec3<double> p_rel = state.bfoot_pos_[i]; // b_pfoot
-//        Vec3<double> dp_rel = state.bfoot_vel_[i]; // b_vfoot
-//        Vec3<double> p_f = Rbod * p_rel;
-//        Vec3<double> omegaBody = state.angular_vel_;
-//        Vec3<double> dp_f = Rbod * (omegaBody.cross(p_rel) + dp_rel);
 
         Vec3<double> p_rel = state.bfoot_pos_[i]; // b_pfoot
         Vec3<double> dp_rel = state.bfoot_vel_[i]; // b_vfoot
@@ -188,11 +183,8 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp)
         vs_.segment(i1, 3) = -dp_f;
 
         // test
-//        pzs(i) = state.foot_pos_[i].z();
+       pzs(i) = terrain_z;
 
-        // wrong!
-//        ps_.segment(3 * i, 3) = state.pos_ - state.foot_pos_[i];
-//        vs_.segment(3 * i, 3) = state.linear_vel_ - state.foot_vel_[i];
     }
 
     Vec3<double> g(0, 0, -9.81);
@@ -227,7 +219,7 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp)
     state.pos_ = x_hat_.block(0, 0, 3, 1);
     state.linear_vel_ = x_hat_.block(3, 0, 3, 1);
 
-    StateEstimateBase::update(state, timeStamp);
+    StateEstimateBase::update(state, timeStamp, terrain_z);
 }
 
 

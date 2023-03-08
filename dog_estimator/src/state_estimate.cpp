@@ -13,79 +13,67 @@ StateEstimateBase::StateEstimateBase(ros::NodeHandle& nh)
 void StateEstimateBase::update(RobotState& state, ros::Time timeStamp, const double terrain_z)
 {
     ros::Time time = timeStamp;
-    // ofstream savelegodompose_path("/home/skywoodsz/code/slam/LegSAM_ws/src/Logodompose.txt",ios::app);
-    // savelegodompose_path.setf(ios::fixed,ios::floatfield);
-    if (time < ros::Time(0.01))  // When simulate time reset
-        last_publish_ = time;
-    if (time - last_publish_ > ros::Duration(0.01))  // 100Hz
+    if (odom_pub_->trylock())
     {
-        last_publish_ = time;
-        if (odom_pub_->trylock())
-        {
-            odom_pub_->msg_.header.stamp = time;
-            odom_pub_->msg_.pose.pose.orientation.x = state.quat_.x();
-            odom_pub_->msg_.pose.pose.orientation.y = state.quat_.y();
-            odom_pub_->msg_.pose.pose.orientation.z = state.quat_.z();
-            odom_pub_->msg_.pose.pose.orientation.w = state.quat_.w();
-            odom_pub_->msg_.pose.pose.position.x = state.pos_[0];
-            odom_pub_->msg_.pose.pose.position.y = state.pos_[1];
-            odom_pub_->msg_.pose.pose.position.z = state.pos_[2];
-            odom_pub_->msg_.twist.twist.angular.x = state.angular_vel_[0];
-            odom_pub_->msg_.twist.twist.angular.y = state.angular_vel_[1];
-            odom_pub_->msg_.twist.twist.angular.z = state.angular_vel_[2];
-            odom_pub_->msg_.twist.twist.linear.x = state.linear_vel_[0];
-            odom_pub_->msg_.twist.twist.linear.y = state.linear_vel_[1];
-            odom_pub_->msg_.twist.twist.linear.z = state.linear_vel_[2];
-            odom_pub_->unlockAndPublish();
-        }
-        // savelegodompose_path.precision(1);
-        // savelegodompose_path<< time <<" ";
-        // savelegodompose_path.precision(5);
-        // savelegodompose_path << state.pos_[0]<<" "<<state.pos_[1]<<" "<<state.pos_[2]<<" "<<
-        //                             state.quat_.x()<<" "<<state.quat_.y()<<" "<<state.quat_.z()<<" "<<
-        //                             state.quat_.w()<<endl;
-        // tf
-        geometry_msgs::TransformStamped transform_stamped;
-        transform_stamped.header.stamp = time;
-        transform_stamped.header.frame_id = "odom";
-        transform_stamped.child_frame_id = "base_link";
-        transform_stamped.transform.translation.x = state.pos_[0];
-        transform_stamped.transform.translation.y = state.pos_[1];
-        transform_stamped.transform.translation.z = state.pos_[2];
-        transform_stamped.transform.rotation.x = state.quat_.x();
-        transform_stamped.transform.rotation.y = state.quat_.y();
-        transform_stamped.transform.rotation.z = state.quat_.z();
-        transform_stamped.transform.rotation.w = state.quat_.w();
-        tf_br_.sendTransform(transform_stamped);
+        odom_pub_->msg_.header.stamp = time;
+        odom_pub_->msg_.pose.pose.orientation.x = state.quat_.x();
+        odom_pub_->msg_.pose.pose.orientation.y = state.quat_.y();
+        odom_pub_->msg_.pose.pose.orientation.z = state.quat_.z();
+        odom_pub_->msg_.pose.pose.orientation.w = state.quat_.w();
+        odom_pub_->msg_.pose.pose.position.x = state.pos_[0];
+        odom_pub_->msg_.pose.pose.position.y = state.pos_[1];
+        odom_pub_->msg_.pose.pose.position.z = state.pos_[2];
+        odom_pub_->msg_.twist.twist.angular.x = state.angular_vel_[0];
+        odom_pub_->msg_.twist.twist.angular.y = state.angular_vel_[1];
+        odom_pub_->msg_.twist.twist.angular.z = state.angular_vel_[2];
+        odom_pub_->msg_.twist.twist.linear.x = state.linear_vel_[0];
+        odom_pub_->msg_.twist.twist.linear.y = state.linear_vel_[1];
+        odom_pub_->msg_.twist.twist.linear.z = state.linear_vel_[2];
+        odom_pub_->unlockAndPublish();
+    }
 
-        // path
-        Eigen::Vector3d current_position = Eigen::Vector3d(state.pos_[0],
-                                                           state.pos_[1],
-                                                           state.pos_[2]);
-        if((last_position_ - current_position).norm() > 0.1)
-        {
-            last_position_ = current_position;
-            if (path_pub_->trylock()) {
-                geometry_msgs::PoseStamped legged_pose;
-                legged_pose.header.stamp = time;
-                legged_pose.header.frame_id = "odom";
-                legged_pose.pose.position.x = state.pos_[0];
-                legged_pose.pose.position.y = state.pos_[1];
-                legged_pose.pose.position.z = state.pos_[2];
+    // tf
+    // geometry_msgs::TransformStamped transform_stamped;
+    // transform_stamped.header.stamp = time;
+    // transform_stamped.header.frame_id = "odom";
+    // transform_stamped.child_frame_id = "base_link";
+    // transform_stamped.transform.translation.x = state.pos_[0];
+    // transform_stamped.transform.translation.y = state.pos_[1];
+    // transform_stamped.transform.translation.z = state.pos_[2];
+    // transform_stamped.transform.rotation.x = state.quat_.x();
+    // transform_stamped.transform.rotation.y = state.quat_.y();
+    // transform_stamped.transform.rotation.z = state.quat_.z();
+    // transform_stamped.transform.rotation.w = state.quat_.w();
+    // tf_br_.sendTransform(transform_stamped);
 
-                legged_pose.pose.orientation.x = state.quat_.x();
-                legged_pose.pose.orientation.y = state.quat_.y();
-                legged_pose.pose.orientation.z = state.quat_.z();
-                legged_pose.pose.orientation.w = state.quat_.w();
+    // path
+    Eigen::Vector3d current_position = Eigen::Vector3d(state.pos_[0],
+                                                        state.pos_[1],
+                                                        state.pos_[2]);
+    if((last_position_ - current_position).norm() > 0.1)
+    {
+        last_position_ = current_position;
+        if (path_pub_->trylock()) {
+            geometry_msgs::PoseStamped legged_pose;
+            legged_pose.header.stamp = time;
+            legged_pose.header.frame_id = "odom";
+            legged_pose.pose.position.x = state.pos_[0];
+            legged_pose.pose.position.y = state.pos_[1];
+            legged_pose.pose.position.z = state.pos_[2];
 
-                path_pub_->msg_.header.stamp = ros::Time::now();
-                path_pub_->msg_.header.frame_id = "odom";
-                path_pub_->msg_.poses.push_back(legged_pose);
+            legged_pose.pose.orientation.x = state.quat_.x();
+            legged_pose.pose.orientation.y = state.quat_.y();
+            legged_pose.pose.orientation.z = state.quat_.z();
+            legged_pose.pose.orientation.w = state.quat_.w();
 
-                path_pub_->unlockAndPublish();
-            }
+            path_pub_->msg_.header.stamp = ros::Time::now();
+            path_pub_->msg_.header.frame_id = "odom";
+            path_pub_->msg_.poses.push_back(legged_pose);
+
+            path_pub_->unlockAndPublish();
         }
     }
+    
 }
 
 LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEstimateBase(nh)

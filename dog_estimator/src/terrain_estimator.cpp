@@ -58,7 +58,7 @@ void TerrainEstimator::Reset() {
     dealta_z_sum_ = 0.;
 
     alpha_ = 0.1;
-    win_size_ = 1;
+    win_size_ = 1000;
 
 }
 
@@ -118,6 +118,7 @@ void TerrainEstimator::terrainDealtaZ(const RobotState &state, const ros::Durati
         Eigen::Vector3d delta_pos = Rbod.transpose() * period.toSec() * vel;
         dealta_z = delta_pos(0) * tan(av_theta);
 
+        // TODO: 下坡, 利用 terrain_imu_norm_(0)判断
         // if(terrain_norm_unity(0) > 0)
         //     dealta_z = -dealta_z;
         
@@ -158,7 +159,7 @@ void TerrainEstimator::terrainDealtaZ(const RobotState &state, const ros::Durati
 
 void TerrainEstimator::update(const RobotState &state, double& terrain_z) {
     ros::Time time = ros::Time::now();
-    if (time - last_publish_ > ros::Duration(0.002))  // 500Hz
+    if (time - last_publish_ > ros::Duration(0.01))  // 100Hz
     {
             // methods 1: leg estimation
             for (int leg = 0; leg < 4; ++leg) {

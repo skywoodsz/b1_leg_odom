@@ -16,7 +16,7 @@ pnh_(private_node_handle)
     terrain_estimator_ = std::make_shared<TerrainEstimator>(nh_);
 
     state_pub_ =
-            std::make_shared<realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>>(nh_, "/leg_states", 100);
+            std::make_shared<realtime_tools::RealtimePublisher<cheetah_msgs::LegsState>>(nh_, "/test/leg_states", 100);
     
     // 0. get leg state data
     leg_sub_ = nh_.subscribe<cheetah_msgs::LegsState>("/dog/leg_state", 1, &KF_ESTIMATOR::LegStateCallBack, this);
@@ -47,11 +47,18 @@ void KF_ESTIMATOR::update(const ros::TimerEvent &event) {
         if(terrain_estimator_ != nullptr)
             terrain_estimator_->update(robot_state_, terrain_z_);
 
-        // std::cout<<"terrain_z_: "<<terrain_z_<<std::endl;
+        publishState();
 
-        // publishState();
+    }
+}
 
-        // ROS_INFO("!!");
+void KF_ESTIMATOR::publishState()
+{
+    if(state_pub_->trylock())
+    {   
+        state_pub_->msg_.foot_pos[0].x = 0.0;
+
+        state_pub_->unlockAndPublish();
     }
 }
 

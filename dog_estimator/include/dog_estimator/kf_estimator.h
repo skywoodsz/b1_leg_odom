@@ -59,6 +59,8 @@ private:
     std::shared_ptr<StateEstimateBase> linear_estimate_;
     std::shared_ptr<TerrainEstimator> terrain_estimator_;
 
+
+
 };
 
 #endif //SRC_KF_ESTIMATOR_H

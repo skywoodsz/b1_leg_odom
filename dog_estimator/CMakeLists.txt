@@ -14,9 +14,14 @@ find_package(catkin REQUIRED
         cheetah_msgs
         geometry_msgs
         tf2_ros
+        dynamic_reconfigure
         )
 
 find_package(Eigen3 REQUIRED)
+
+generate_dynamic_reconfigure_options(
+        cfg/param.cfg
+)
 
 catkin_package(
         INCLUDE_DIRS
@@ -42,6 +47,8 @@ add_library(${PROJECT_NAME}
         src/state_estimate.cpp
         src/terrain_estimator.cpp
         )
+
+add_dependencies(${PROJECT_NAME} ${PROJECT_NAME}_gencfg)
 
 target_link_libraries(${PROJECT_NAME}
         ${catkin_LIBRARIES}

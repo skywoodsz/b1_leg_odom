@@ -121,6 +121,10 @@ LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEst
     c_(26, 14) = 1.0;
     c_(25, 11) = 1.0;
     c_(24, 8) = 1.0;
+    // lidar
+    c_(28, 0) = 1.0;
+    c_(29, 1) = 1.0;
+
     p_.setIdentity();
     p_ = 100. * p_;
     q_.setIdentity();
@@ -128,10 +132,27 @@ LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEst
     q_.block(3, 3, 3, 3) = (dt * 9.81f / 20.f) * Eigen::Matrix<double, 3, 3>::Identity();
     q_.block(6, 6, 12, 12) = dt * Eigen::Matrix<double, 12, 12>::Identity();
     r_.setIdentity();
+
+
+    lidar_pose_old_ = {};
+    lidar_pose_new_ = {};
+    lidar_sub_ = nh.subscribe("/lio_sam/mapping/odometry", 1, &LinearKFPosVelEstimator::LidarOdomCallback, this);
 }
 
 void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, const double terrain_z)
 {
+    // lidar
+    Eigen::Vector3d lidar_pos;
+    if(timeStamp - lidar_pose_new_.timeStamp < ros::Duration(0.01))
+    {
+        lidar_pos = lidar_pose_new_.pos;
+    }
+    else
+    {
+        lidar_pos = lidar_pose_new_.pos + state.linear_vel_ * (timeStamp - lidar_pose_new_.timeStamp).toSec();
+    }
+    double lidar_sensor_noise = 0.001;
+
     // predict
     double imu_process_noise_position = 0.02;
     double imu_process_noise_velocity = 0.02;
@@ -148,10 +169,12 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     q.block(3, 3, 3, 3) = q_.block(3, 3, 3, 3) * imu_process_noise_velocity;
     q.block(6, 6, 12, 12) = q_.block(6, 6, 12, 12) * foot_process_noise_position;
 
-    Eigen::Matrix<double, 28, 28> r = Eigen::Matrix<double, 28, 28>::Identity();
+    Eigen::Matrix<double, 30, 30> r = Eigen::Matrix<double, 30, 30>::Identity(); // 28 28
     r.block(0, 0, 12, 12) = r_.block(0, 0, 12, 12) * foot_sensor_noise_position;
     r.block(12, 12, 12, 12) = r_.block(12, 12, 12, 12) * foot_sensor_noise_velocity;
     r.block(24, 24, 4, 4) = r_.block(24, 24, 4, 4) * foot_height_sensor_noise;
+    // lidar
+    r.block(28, 28, 2, 2) = r_.block(28, 28, 2, 2) * lidar_sensor_noise;
 
     Vec4<double> pzs = Vec4<double>::Zero();
 
@@ -183,27 +206,29 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
         vs_.segment(i1, 3) = -dp_f;
 
         // test
-       pzs(i) = terrain_z;
+        pzs(i) = terrain_z;
+        // pzs(i) = 0.;
 
     }
 
     Vec3<double> g(0, 0, -9.81);
     Vec3<double> accel = Rbod * state.accel_ + g;
 
-    Eigen::Matrix<double, 28, 1> y;
-    y << ps_, vs_, pzs;
+    Eigen::Matrix<double, 30, 1> y; // Eigen::Matrix<double, 28, 1> y;
+    y << ps_, vs_, pzs, lidar_pos[0], lidar_pos[1]; 
+
     x_hat_ = a_ * x_hat_ + b_ * accel;
     Eigen::Matrix<double, 18, 18> at = a_.transpose();
     Eigen::Matrix<double, 18, 18> pm = a_ * p_ * at + q;
-    Eigen::Matrix<double, 18, 28> ct = c_.transpose();
-    Eigen::Matrix<double, 28, 1> y_model = c_ * x_hat_;
-    Eigen::Matrix<double, 28, 1> ey = y - y_model;
-    Eigen::Matrix<double, 28, 28> s = c_ * pm * ct + r;
+    Eigen::Matrix<double, 18, 30> ct = c_.transpose();
+    Eigen::Matrix<double, 30, 1> y_model = c_ * x_hat_;
+    Eigen::Matrix<double, 30, 1> ey = y - y_model;
+    Eigen::Matrix<double, 30, 30> s = c_ * pm * ct + r;
 
-    Eigen::Matrix<double, 28, 1> s_ey = s.lu().solve(ey);
+    Eigen::Matrix<double, 30, 1> s_ey = s.lu().solve(ey);
     x_hat_ += pm * ct * s_ey;
 
-    Eigen::Matrix<double, 28, 18> s_c = s.lu().solve(c_);
+    Eigen::Matrix<double, 30, 18> s_c = s.lu().solve(c_);
     p_ = (Eigen::Matrix<double, 18, 18>::Identity() - pm * ct * s_c) * pm;
 
     Eigen::Matrix<double, 18, 18> pt = p_.transpose();
@@ -220,6 +245,22 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     state.linear_vel_ = x_hat_.block(3, 0, 3, 1);
 
     StateEstimateBase::update(state, timeStamp, terrain_z);
+}
+
+void LinearKFPosVelEstimator::LidarOdomCallback(const nav_msgs::Odometry::ConstPtr &msg)
+{
+    nav_msgs::Odometry odom_msg = *msg;
+    ros::Time timeStamp = odom_msg.header.stamp;
+
+    if(timeStamp > lidar_pose_new_.timeStamp)
+    {
+        lidar_pose_old_ = lidar_pose_new_;
+
+        lidar_pose_new_.timeStamp = timeStamp;
+        lidar_pose_new_.pos[0] = odom_msg.pose.pose.position.x;
+        lidar_pose_new_.pos[1] = odom_msg.pose.pose.position.y;
+        lidar_pose_new_.pos[2] = odom_msg.pose.pose.position.z;
+    }
 }
 
 

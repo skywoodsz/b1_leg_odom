@@ -21,6 +21,8 @@ nh_(nh)
 
     terrain_eular_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/dog/terrain_eular", 1);
 
+    terrain_av_eular_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/dog/terrain_av_eular", 1);
+
     terrain_deatal_z_pub_ = nh.advertise<geometry_msgs::Vector3Stamped>("/dog/terrain_deatal_z", 1);
 
     terrain_sum_z_pub_ = nh.advertise<geometry_msgs::Vector3Stamped>("/dog/terrain_sum_z", 1);
@@ -30,6 +32,13 @@ nh_(nh)
     theta_threshold_ = 3. * M_PI / 180.;
 
     Reset();
+
+    ros::NodeHandle nh_param = ros::NodeHandle(nh, "param");
+    dynamic_srv_ = std::make_shared<dynamic_reconfigure::Server<dog_estimator::ParamConfig>>(nh_param);
+    dynamic_reconfigure::Server<dog_estimator::ParamConfig>::CallbackType cb = [this](auto&& PH1, auto&& PH2) {
+        dynamicCallback(std::forward<decltype(PH1)>(PH1), std::forward<decltype(PH2)>(PH2));
+    };
+    dynamic_srv_->setCallback(cb);
 }
 
 void TerrainEstimator::Reset() {
@@ -48,6 +57,42 @@ void TerrainEstimator::Reset() {
 
     dealta_z_sum_ = 0.;
 
+    alpha_ = 0.1;
+    win_size_ = 1;
+
+}
+
+void TerrainEstimator::AverageWindows(int win_size, double& av)
+{
+    if(vt_que_.empty())
+    {
+        av = 0.0;
+    }
+    else
+    {
+        while(vt_que_.size() > win_size)
+        {
+            vt_que_.pop_front();
+        }
+
+        av = 0.0;
+        for (auto vt : vt_que_)
+        {
+            double tmp = vt / vt_que_.size();
+            av += tmp;
+        }
+    }
+
+    
+}
+
+void TerrainEstimator::dynamicCallback(dog_estimator::ParamConfig& config, uint32_t /*level*/)
+{
+    alpha_ = config.alpha;
+    theta_threshold_ = config.theta_threshold * M_PI / 180.0;
+    win_size_ = config.win_size;
+
+    ROS_INFO("Param update!");
 }
 
 void TerrainEstimator::terrainDealtaZ(const RobotState &state, const ros::Duration &period, double& terrain_z)
@@ -55,22 +100,26 @@ void TerrainEstimator::terrainDealtaZ(const RobotState &state, const ros::Durati
 
     Eigen::Vector3d gravity_unity(0, 0, 1);
     Eigen::Vector3d terrain_norm_unity = terrain_norm_ / terrain_norm_.norm();
+    // Eigen::Vector3d terrain_norm_unity = terrain_imu_norm_ / terrain_imu_norm_.norm();
     double theta = acos(terrain_norm_unity.transpose() * gravity_unity);
     double dealta_z = 0.;
+    double av_theta = 0.;
+    vt_que_.push_back(theta);
+    AverageWindows(win_size_, av_theta);
 
     Eigen::Vector3d vel = state.linear_vel_;
     bool terrain_flag = false;
     
-    if(theta > theta_threshold_)
+    if(av_theta > theta_threshold_)
     {
         Eigen::Vector3d terrain_pos = state.pos_;
         Eigen::Matrix3d Rbod = quaternionToRotationMatrix(state.quat_);
         // Eigen::Vector3d delta_pos = Rbod.transpose() * (terrain_pos - terrain_init_pos_);
         Eigen::Vector3d delta_pos = Rbod.transpose() * period.toSec() * vel;
-        dealta_z = delta_pos(0) * tan(theta);
+        dealta_z = delta_pos(0) * tan(av_theta);
 
-        if(terrain_norm_unity(0) > 0)
-            dealta_z = -dealta_z;
+        // if(terrain_norm_unity(0) > 0)
+        //     dealta_z = -dealta_z;
         
         terrain_flag = true;
 
@@ -81,22 +130,26 @@ void TerrainEstimator::terrainDealtaZ(const RobotState &state, const ros::Durati
         terrain_init_quat_ = state.quat_;
     }
 
+
+
     dealta_z_sum_ += dealta_z;
     terrain_z = dealta_z_sum_;
 
-    geometry_msgs::Vector3Stamped theta_msg, dealta_z_msg, sum_z_msg;
+    geometry_msgs::Vector3Stamped theta_msg, dealta_z_msg, sum_z_msg, av_theta_msg; // 
     ros::Time time = ros::Time::now();
     theta_msg.header.stamp = time;
     dealta_z_msg.header.stamp = time;
     sum_z_msg.header.stamp = time;
+    av_theta_msg.header.stamp = time;
     theta_msg.vector.z = theta * 180. / M_PI;
     dealta_z_msg.vector.z = dealta_z;
     sum_z_msg.vector.z = dealta_z_sum_;
-    
+    av_theta_msg.vector.z = av_theta * 180. / M_PI; 
 
     terrain_eular_pub_.publish(theta_msg);
     terrain_deatal_z_pub_.publish(dealta_z_msg);
     terrain_sum_z_pub_.publish(sum_z_msg);
+    terrain_av_eular_pub_.publish(av_theta_msg);
 
     std_msgs::Bool terrain_flag_msg;
     terrain_flag_msg.data = terrain_flag;
@@ -105,7 +158,7 @@ void TerrainEstimator::terrainDealtaZ(const RobotState &state, const ros::Durati
 
 void TerrainEstimator::update(const RobotState &state, double& terrain_z) {
     ros::Time time = ros::Time::now();
-    if (time - last_publish_ > ros::Duration(0.02))  // 50Hz
+    if (time - last_publish_ > ros::Duration(0.002))  // 500Hz
     {
             // methods 1: leg estimation
             for (int leg = 0; leg < 4; ++leg) {
@@ -128,8 +181,8 @@ void TerrainEstimator::update(const RobotState &state, double& terrain_z) {
             Eigen::Vector3d A_pla_temp;
             A_pla_temp =Wpla.colPivHouseholderQr().solve(z_f_);
 
-            double alpha = 0.1; // 0.2
-            A_pla_ = alpha * A_pla_temp + (1 - alpha) * A_pla_;
+            // double alpha = 0.1; // 0.2
+            A_pla_ = alpha_ * A_pla_temp + (1 - alpha_) * A_pla_;
 
             terrain_norm_ = Eigen::Vector3d(-A_pla_[1], -A_pla_[2], 1);
             terrain_norm_.normalize();

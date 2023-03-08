@@ -19,6 +19,13 @@
 
 using namespace std;
 
+struct LidarPose
+{
+    ros::Time timeStamp;
+    Eigen::Vector3d pos;
+};
+
+
 class StateEstimateBase
 {
 public:
@@ -42,15 +49,21 @@ public:
     void update(RobotState& state, ros::Time timeStamp, const double terrain_z);
 
 private:
+    void LidarOdomCallback(const nav_msgs::Odometry::ConstPtr &msg);
+
+    ros::Subscriber lidar_sub_; 
+    LidarPose lidar_pose_old_, lidar_pose_new_;
+
+
     Eigen::Matrix<double, 18, 1> x_hat_;
     Eigen::Matrix<double, 12, 1> ps_;
     Eigen::Matrix<double, 12, 1> vs_;
     Eigen::Matrix<double, 18, 18> a_;
     Eigen::Matrix<double, 18, 18> q_;
     Eigen::Matrix<double, 18, 18> p_;
-    Eigen::Matrix<double, 28, 28> r_;
+    Eigen::Matrix<double, 30, 30> r_; // 28, 28
     Eigen::Matrix<double, 18, 3> b_;
-    Eigen::Matrix<double, 28, 18> c_;
+    Eigen::Matrix<double, 30, 18> c_; // 28, 18
 };
 
 

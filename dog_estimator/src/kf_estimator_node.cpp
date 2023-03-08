@@ -11,8 +11,12 @@ int main(int argc, char *argv[])
     ros::NodeHandle nh;
     ros::NodeHandle nh_private("~");
 
+    ros::AsyncSpinner spinner(4);
+    spinner.start();
+
     KF_ESTIMATOR kf_estimator(nh, nh_private);
 
-    ros::spin();
+    // ros::spin();
+    ros::waitForShutdown();
     return 0;
 }

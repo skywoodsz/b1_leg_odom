@@ -165,7 +165,8 @@ void TerrainEstimator::update(const RobotState &state, double& terrain_z) {
             for (int leg = 0; leg < 4; ++leg) {
                 if(state.contact_state_[leg])
                 {
-                    p_foot_[leg] = state.foot_pos_[leg];
+                    // p_foot_[leg] = state.foot_pos_[leg];
+                    p_foot_[leg] = state.bfoot_pos_[leg];
                 }
                 z_f_[leg] = p_foot_[leg][2];
             }

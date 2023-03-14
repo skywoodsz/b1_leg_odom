@@ -114,9 +114,9 @@ LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEst
     c_(29, 1) = 1.0;
     // map height
     c_(30, 8) = 1.0;
-    c_(30, 11) = 1.0;
-    c_(30, 14) = 1.0;
-    c_(30, 17) = 1.0;
+    c_(31, 11) = 1.0;
+    c_(32, 14) = 1.0;
+    c_(33, 17) = 1.0;
 
     p_.setIdentity();
     p_ = 100. * p_;
@@ -139,30 +139,6 @@ LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEst
 
 void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, const double terrain_z)
 {
-    // lidar
-    Eigen::Vector3d lidar_pos;
-    if(lidar_init_flag_)
-    {
-        if(lidar_updated_flag_){
-            lidar_pos = lidar_pose_.pos;
-            lidar_updated_flag_= false;
-        }
-        else{
-            lidar_pos = lidar_pose_.pos + state.linear_vel_ * (timeStamp - lidar_pose_.timeStamp).toSec();
-        }
-    }
-    else{
-        lidar_pos = lidar_pose_.pos;
-    }
-
-    double terrain_heigh;
-    if(map_updated_flag_)
-    {
-        terrain_heigh = map_height_.terrain_height;
-        map_updated_flag_ = false;
-        std::cout<<"terrain_heigh: "<<terrain_heigh<<std::endl;
-    }
-
     // predict
     double imu_process_noise_position = 0.02;
     double imu_process_noise_velocity = 0.02;
@@ -170,20 +146,43 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     // observer
     double foot_sensor_noise_position = 0.005; // 0.001
     double foot_sensor_noise_velocity = 0.1;
-    double foot_height_sensor_noise = 0.005; // 0.001;
+    double foot_height_sensor_noise = 0.010; // 0.001; 0.01;
     double lidar_sensor_noise = 0.001;
     double map_terrain_height_noise = 0.001;
 
     double high_suspect_number = 100;
 
-    if(!lidar_updated_flag_ || !lidar_init_flag_)
+
+    // lidar
+    Eigen::Vector3d lidar_pos;
+    if(lidar_init_flag_)
     {
+        if(lidar_updated_flag_){
+                lidar_pos = lidar_pose_.pos;
+                lidar_updated_flag_= false;
+        }
+        else{
+            lidar_pos = lidar_pose_.pos + state.linear_vel_ * (timeStamp - lidar_pose_.timeStamp).toSec();
+
+            lidar_sensor_noise *= high_suspect_number;
+            lidar_sensor_noise *= high_suspect_number;
+        }
+    }
+    else{
+        lidar_pos = lidar_pose_.pos;
         lidar_sensor_noise *= high_suspect_number;
         lidar_sensor_noise *= high_suspect_number;
     }
-    if(!map_updated_flag_ || !map_init_flag_)
+
+    // map
+    double terrain_height;
+    if(map_updated_flag_)
     {
-        map_terrain_height_noise *= high_suspect_number;
+        terrain_height = map_height_.terrain_height;
+        map_updated_flag_ = false;
+        std::cout<<"terrain_height: "<<terrain_height<<std::endl;
+    }
+    else{
         map_terrain_height_noise *= high_suspect_number;
     }
 
@@ -204,6 +203,7 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     r.block(30, 30, 4, 4) = r_.block(30, 30, 4, 4) * map_terrain_height_noise;
 
     Vec4<double> pzs = Vec4<double>::Zero();
+    Vec4<double> terrain_height_vec = Vec4<double>::Zero();
 
     for (int i = 0; i < 4; i++)
     {
@@ -232,8 +232,9 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
         ps_.segment(i1, 3) = -p_f;
         vs_.segment(i1, 3) = -dp_f;
 
-        // test
+
         pzs(i) = terrain_z;
+        terrain_height_vec(i) = terrain_height;
         // pzs(i) = 0.;
 
     }
@@ -242,7 +243,7 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     Vec3<double> accel = Rbod * state.accel_ + g;
 
     Eigen::Matrix<double, 34, 1> y; // Eigen::Matrix<double, 28, 1> y;
-    y << ps_, vs_, pzs, lidar_pos[0], lidar_pos[1], terrain_heigh, terrain_heigh, terrain_heigh, terrain_heigh; 
+    y << ps_, vs_, pzs, lidar_pos[0], lidar_pos[1], terrain_height_vec; 
 
     x_hat_ = a_ * x_hat_ + b_ * accel;
     Eigen::Matrix<double, 18, 18> at = a_.transpose();

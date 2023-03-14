@@ -11,6 +11,7 @@
 #include <ros/ros.h>
 #include <nav_msgs/Odometry.h>
 #include <nav_msgs/Path.h>
+#include <geometry_msgs/Vector3Stamped.h>
 #include <realtime_tools/realtime_publisher.h>
 #include <realtime_tools/realtime_buffer.h>
 #include <tf2_ros/transform_broadcaster.h>
@@ -23,6 +24,12 @@ struct LidarPose
 {
     ros::Time timeStamp;
     Eigen::Vector3d pos;
+};
+
+struct MapTerrainHeight
+{
+    ros::Time timeStamp;
+    double terrain_height;
 };
 
 
@@ -50,10 +57,14 @@ public:
 
 private:
     void LidarOdomCallback(const nav_msgs::Odometry::ConstPtr &msg);
+    void MapTerrainHeigtCallback(const geometry_msgs::Vector3Stamped::ConstPtr &msg);
 
-    ros::Subscriber lidar_sub_; 
-    LidarPose lidar_pose_old_, lidar_pose_new_;
+    ros::Subscriber lidar_sub_, map_sub_; 
+    LidarPose lidar_pose_;
+    MapTerrainHeight map_height_;
 
+    bool lidar_updated_flag_, lidar_init_flag_;
+    bool map_updated_flag_, map_init_flag_;
 
     Eigen::Matrix<double, 18, 1> x_hat_;
     Eigen::Matrix<double, 12, 1> ps_;
@@ -61,9 +72,9 @@ private:
     Eigen::Matrix<double, 18, 18> a_;
     Eigen::Matrix<double, 18, 18> q_;
     Eigen::Matrix<double, 18, 18> p_;
-    Eigen::Matrix<double, 30, 30> r_; // 28, 28
+    Eigen::Matrix<double, 34, 34> r_; // 28, 28
     Eigen::Matrix<double, 18, 3> b_;
-    Eigen::Matrix<double, 30, 18> c_; // 28, 18
+    Eigen::Matrix<double, 34, 18> c_; // 28, 18
 };
 
 

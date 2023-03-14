@@ -112,6 +112,11 @@ LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEst
     // lidar
     c_(28, 0) = 1.0;
     c_(29, 1) = 1.0;
+    // map height
+    c_(30, 8) = 1.0;
+    c_(30, 11) = 1.0;
+    c_(30, 14) = 1.0;
+    c_(30, 17) = 1.0;
 
     p_.setIdentity();
     p_ = 100. * p_;
@@ -121,25 +126,42 @@ LinearKFPosVelEstimator::LinearKFPosVelEstimator(ros::NodeHandle& nh) : StateEst
     q_.block(6, 6, 12, 12) = dt * Eigen::Matrix<double, 12, 12>::Identity();
     r_.setIdentity();
 
+    lidar_pose_ = {};
+    map_height_ = {};
+    lidar_updated_flag_ = false;
+    lidar_init_flag_ = false;
+    map_updated_flag_ = false;
+    map_init_flag_ = false;
 
-    lidar_pose_old_ = {};
-    lidar_pose_new_ = {};
     lidar_sub_ = nh.subscribe("/lio_sam/mapping/odometry", 1, &LinearKFPosVelEstimator::LidarOdomCallback, this);
+    map_sub_ = nh.subscribe("/lio_sam/map/z", 1, &LinearKFPosVelEstimator::MapTerrainHeigtCallback, this);
 }
 
 void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, const double terrain_z)
 {
     // lidar
     Eigen::Vector3d lidar_pos;
-    if(timeStamp - lidar_pose_new_.timeStamp < ros::Duration(0.01))
+    if(lidar_init_flag_)
     {
-        lidar_pos = lidar_pose_new_.pos;
+        if(lidar_updated_flag_){
+            lidar_pos = lidar_pose_.pos;
+            lidar_updated_flag_= false;
+        }
+        else{
+            lidar_pos = lidar_pose_.pos + state.linear_vel_ * (timeStamp - lidar_pose_.timeStamp).toSec();
+        }
     }
-    else
+    else{
+        lidar_pos = lidar_pose_.pos;
+    }
+
+    double terrain_heigh;
+    if(map_updated_flag_)
     {
-        lidar_pos = lidar_pose_new_.pos + state.linear_vel_ * (timeStamp - lidar_pose_new_.timeStamp).toSec();
+        terrain_heigh = map_height_.terrain_height;
+        map_updated_flag_ = false;
+        std::cout<<"terrain_heigh: "<<terrain_heigh<<std::endl;
     }
-    double lidar_sensor_noise = 0.001;
 
     // predict
     double imu_process_noise_position = 0.02;
@@ -148,7 +170,22 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     // observer
     double foot_sensor_noise_position = 0.005; // 0.001
     double foot_sensor_noise_velocity = 0.1;
-    double foot_height_sensor_noise = 0.001;
+    double foot_height_sensor_noise = 0.005; // 0.001;
+    double lidar_sensor_noise = 0.001;
+    double map_terrain_height_noise = 0.001;
+
+    double high_suspect_number = 100;
+
+    if(!lidar_updated_flag_ || !lidar_init_flag_)
+    {
+        lidar_sensor_noise *= high_suspect_number;
+        lidar_sensor_noise *= high_suspect_number;
+    }
+    if(!map_updated_flag_ || !map_init_flag_)
+    {
+        map_terrain_height_noise *= high_suspect_number;
+        map_terrain_height_noise *= high_suspect_number;
+    }
 
     Mat3<double> Rbod = quaternionToRotationMatrix(state.quat_);
 
@@ -157,12 +194,14 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     q.block(3, 3, 3, 3) = q_.block(3, 3, 3, 3) * imu_process_noise_velocity;
     q.block(6, 6, 12, 12) = q_.block(6, 6, 12, 12) * foot_process_noise_position;
 
-    Eigen::Matrix<double, 30, 30> r = Eigen::Matrix<double, 30, 30>::Identity(); // 28 28
+    Eigen::Matrix<double, 34, 34> r = Eigen::Matrix<double, 34, 34>::Identity(); // 28 28
     r.block(0, 0, 12, 12) = r_.block(0, 0, 12, 12) * foot_sensor_noise_position;
     r.block(12, 12, 12, 12) = r_.block(12, 12, 12, 12) * foot_sensor_noise_velocity;
     r.block(24, 24, 4, 4) = r_.block(24, 24, 4, 4) * foot_height_sensor_noise;
     // lidar
     r.block(28, 28, 2, 2) = r_.block(28, 28, 2, 2) * lidar_sensor_noise;
+    // map height
+    r.block(30, 30, 4, 4) = r_.block(30, 30, 4, 4) * map_terrain_height_noise;
 
     Vec4<double> pzs = Vec4<double>::Zero();
 
@@ -175,7 +214,7 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
         int r_index2 = 12 + i1;
         int r_index3 = 24 + i;
 
-        double high_suspect_number(100);
+        
         q.block(q_index, q_index, 3, 3) =
                 (state.contact_state_[i] ? 1. : high_suspect_number) * q.block(q_index, q_index, 3, 3);
         r.block(r_index1, r_index1, 3, 3) = 1. * r.block(r_index1, r_index1, 3, 3);
@@ -202,21 +241,21 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     Vec3<double> g(0, 0, -9.81);
     Vec3<double> accel = Rbod * state.accel_ + g;
 
-    Eigen::Matrix<double, 30, 1> y; // Eigen::Matrix<double, 28, 1> y;
-    y << ps_, vs_, pzs, lidar_pos[0], lidar_pos[1]; 
+    Eigen::Matrix<double, 34, 1> y; // Eigen::Matrix<double, 28, 1> y;
+    y << ps_, vs_, pzs, lidar_pos[0], lidar_pos[1], terrain_heigh, terrain_heigh, terrain_heigh, terrain_heigh; 
 
     x_hat_ = a_ * x_hat_ + b_ * accel;
     Eigen::Matrix<double, 18, 18> at = a_.transpose();
     Eigen::Matrix<double, 18, 18> pm = a_ * p_ * at + q;
-    Eigen::Matrix<double, 18, 30> ct = c_.transpose();
-    Eigen::Matrix<double, 30, 1> y_model = c_ * x_hat_;
-    Eigen::Matrix<double, 30, 1> ey = y - y_model;
-    Eigen::Matrix<double, 30, 30> s = c_ * pm * ct + r;
+    Eigen::Matrix<double, 18, 34> ct = c_.transpose();
+    Eigen::Matrix<double, 34, 1> y_model = c_ * x_hat_;
+    Eigen::Matrix<double, 34, 1> ey = y - y_model;
+    Eigen::Matrix<double, 34, 34> s = c_ * pm * ct + r;
 
-    Eigen::Matrix<double, 30, 1> s_ey = s.lu().solve(ey);
+    Eigen::Matrix<double, 34, 1> s_ey = s.lu().solve(ey);
     x_hat_ += pm * ct * s_ey;
 
-    Eigen::Matrix<double, 30, 18> s_c = s.lu().solve(c_);
+    Eigen::Matrix<double, 34, 18> s_c = s.lu().solve(c_);
     p_ = (Eigen::Matrix<double, 18, 18>::Identity() - pm * ct * s_c) * pm;
 
     Eigen::Matrix<double, 18, 18> pt = p_.transpose();
@@ -235,20 +274,29 @@ void LinearKFPosVelEstimator::update(RobotState& state, ros::Time timeStamp, con
     StateEstimateBase::update(state, timeStamp, terrain_z);
 }
 
+void LinearKFPosVelEstimator::MapTerrainHeigtCallback(const geometry_msgs::Vector3Stamped::ConstPtr &msg)
+{
+    geometry_msgs::Vector3Stamped map_height_msg = *msg;
+
+    map_height_.timeStamp = map_height_msg.header.stamp;
+    map_height_.terrain_height = map_height_msg.vector.z;
+
+    map_updated_flag_ = true;
+    map_init_flag_ = true;
+}
+
 void LinearKFPosVelEstimator::LidarOdomCallback(const nav_msgs::Odometry::ConstPtr &msg)
 {
     nav_msgs::Odometry odom_msg = *msg;
     ros::Time timeStamp = odom_msg.header.stamp;
 
-    if(timeStamp > lidar_pose_new_.timeStamp)
-    {
-        lidar_pose_old_ = lidar_pose_new_;
+    lidar_pose_.timeStamp = timeStamp;
+    lidar_pose_.pos[0] = odom_msg.pose.pose.position.x;
+    lidar_pose_.pos[1] = odom_msg.pose.pose.position.y;
+    lidar_pose_.pos[2] = odom_msg.pose.pose.position.z;
 
-        lidar_pose_new_.timeStamp = timeStamp;
-        lidar_pose_new_.pos[0] = odom_msg.pose.pose.position.x;
-        lidar_pose_new_.pos[1] = odom_msg.pose.pose.position.y;
-        lidar_pose_new_.pos[2] = odom_msg.pose.pose.position.z;
-    }
+    lidar_init_flag_ = true;
+    lidar_updated_flag_ = true;
 }
 
 
